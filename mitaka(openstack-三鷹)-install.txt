@@ -1,0 +1,171 @@
+======= 1 IPV6 の無効化===================================================
+
+
+echo "net.ipv6.conf.all.disable_ipv6 = 1" >> /etc/sysctl.conf
+
+cat /proc/sys/net/ipv6/conf/all/disable_ipv6
+
+#設定ファイル作成
+$vi /etc/sysctl.d/disable_ipv6.conf
+
+ net.ipv6.conf.all.disable_ipv6 = 1
+ net.ipv6.conf.default.disable_ipv6 = 1
+#設定反映
+$ sysctl -p/etc/sysctl.d/disable_ipv6.conf
+
+
+
+========== 2 hosts ================
+[root@fd ~]# cat /etc/hosts
+192.168.88.88 fd.com fd
+
+========= 3 NetworkManagerの停止========
+
+$ sudo systemctl status  NetworkManager
+$ sudo systemctl disable NetworkManager
+$ sudo systemctl stop NetworkManager
+
+
+========= 4 セキュリティの設定========
+$ sudo systemctl status firewalld
+$ sudo systemctl disable firewalld
+$ sudo systemctl stop firewalld
+
+
+$ vi /etc/sysconfig/selinux
+SELINUX=disabled
+
+===== 
+*******
+
+reboot
+
+*******
+=======
+
+
+
+========= 5 Cinder 用のLVMボリュームの作成=======
+
+dd if=/dev/zero of=/root/cinder.img bs=1024M count=2
+
+losetup -a
+
+losetup /dev/loop0 /root/cinder.img
+
+parted -s /dev/loop0 'mklabel gpt'
+parted -s /dev/loop0 'mkpart primary 0 -1'
+parted -s /dev/loop0 'set 1 lvm on'
+parted -s /dev/loop0 'print'
+
+partprobe /dev/loop0
+cat /proc/partitions
+
+pvcreate -y -ff /dev/loop0p1
+vgcreate -y -f cinder-volumes /dev/loop0p1
+
+===========================================================================================================
+========================================  Packstackのインストール  ========================================
+###yum install -y https://repos.fedorapeople.org/openstack/EOL/openstack-mitaka/rdo-release-mitaka-7.noarch.rpm だめ
+
+cat /etc/yum.repos.d/rdo-release.repo
+
+cat /etc/yum.repos.d/rdo-release.repo
+
+vi /etc/yum.repos.d/rdo-release.repo
+[openstack-mitaka]
+name=OpenStack Mitaka Repository
+baseurl=http://quattor.web.lal.in2p3.fr/packages/openstack/mitaka/el7/
+gpgcheck=0
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-SIG-Cloud
+
+
+vi /etc/environment
+
+LANG=en_US.utf-8
+LC_ALL=en_US.utf-8
+
+LANG=en_US.utf-8
+LC_ALL=en_US.utf-8
+
+**********
+yum update -y
+
+********
+
+yum install -y openstack-packstack
+
+********
+yum install -y ntp
+
+cp /etc/ntp.conf /etc/ntp.conf.org
+
+*********
+packstack --gen-answer=param.txt
+
+cp param.txt param.txt.org
+
+vi param.txt
+ PW2か所
+
+cat param.txt | grep -v ^# | grep -v ^$ > param.txt.trimmed
+
+
+cp param.txt param.txt.bak
+
+===========
+
+packstack --answer-file=param.txt
+
+
+ **** Installation completed successfully ******
+
+Additional information:
+ * Time synchronization installation was skipped. Please note that unsynchronized time on server instances might be problem for some OpenStack components.
+ * File /root/keystonerc_admin has been created on OpenStack client host 192.168.88.88. To use the command line tools you need to source the file.
+ * To access the OpenStack Dashboard browse to http://192.168.88.88/dashboard .
+Please, find your login credentials stored in the keystonerc_admin in your home directory.
+ * To use Nagios, browse to http://192.168.88.88/nagios username: nagiosadmin, password: 0e65ddaf758c456d
+ * The installation log file is available at: /var/tmp/packstack/20181216-092113-JUSSRT/openstack-setup.log
+ * The generated manifests are available at: /var/tmp/packstack/20181216-092113-JUSSRT/manifests
+ 
+ 
+[root@fd ~]# cat keystonerc_admin
+unset OS_SERVICE_TOKEN
+export OS_USERNAME=admin
+export OS_PASSWORD=password1234
+export OS_AUTH_URL=http://192.168.88.88:5000/v2.0
+export PS1='[\u@\h \W(keystone_admin)]\$ '
+
+export OS_TENANT_NAME=admin
+export OS_REGION_NAME=RegionOne
+
+================
+cp /usr/lib/systemd/system/rabbitmq-server.service /etc/systemd/system
+
+
+TimeoutStartSec=900
+TimeoutStopSec=900
+
+cp /usr/lib/systemd/system/httpd.service /etc/systemd/system
+
+cp /usr/lib/systemd/system/neutron-server.service /etc/systemd/system
+
+********
+systemctl daemon-reload
+
+systemctl restart rabbitmq-server
+systemctl restart httpd
+systemctl restart neutron-server
+
+=======
+
+systemctl status rabbitmq-server |grep running
+systemctl status httpd |grep running
+systemctl status neutron-server |grep running
+
+
+=========-openstack-keystone について=========
+
+systemctl is-enabled openstack-keystone

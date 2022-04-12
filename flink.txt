@@ -1,0 +1,476 @@
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-connector-kafka_2.12</artifactId>
+            <version>1.10.1</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.apache.flink/flink-java -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-java</artifactId>
+            <version>1.10.0</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/org.apache.flink/flink-streaming-java -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-streaming-java_2.12</artifactId>
+            <version>1.10.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/org.apache.flink/flink-clients -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-clients_2.12</artifactId>
+            <version>1.10.0</version>
+        </dependency>
+
+        <!--加入下面两个依赖才会出现 Flink 的日志出来-->
+        <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>1.7.25</version>
+        </dependency>
+        <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-simple</artifactId>
+        <version>1.7.25</version>
+        </dependency>
+        
+public class FullPull {
+
+    public static void main(String[] args) throws Exception {
+        //获取flink的运行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        //checkpoint配置
+        env.enableCheckpointing(5000);
+        env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
+        env.getCheckpointConfig().setCheckpointTimeout(60000);
+        env.getCheckpointConfig().setMinPauseBetweenCheckpoints(500);
+        env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);
+        env.getCheckpointConfig().enableExternalizedCheckpoints(CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
+
+        //设置kafka基本信息
+        String topic = "maxwell";
+        Properties prop = new Properties();
+        //此为实际的kafka地址
+        prop.setProperty("bootstrap.servers", "10.250.115.210:9092");
+        //该属性不能缺少
+        prop.setProperty("group.id", "con1");
+
+        //设置kafka中主题对应分区的开始消费的offset
+        HashMap<KafkaTopicPartition, Long> kafkaTopicPartionMap = new HashMap<KafkaTopicPartition, Long>();
+        kafkaTopicPartionMap.put(new KafkaTopicPartition(topic, 0), 10L);
+        kafkaTopicPartionMap.put(new KafkaTopicPartition(topic, 1), 0L);
+        kafkaTopicPartionMap.put(new KafkaTopicPartition(topic, 2), 0L);
+
+        FlinkKafkaConsumer<String> myConsumer = new FlinkKafkaConsumer<String>(topic, new SimpleStringSchema(), prop);
+
+        //指定消费的策略
+//        myConsumer.setStartFromGroupOffsets();//默认消费策略，消费kafka正在传输的信息
+        myConsumer.setStartFromSpecificOffsets(kafkaTopicPartionMap); //从指定的offset开始消费
+        DataStreamSource<String> text = env.addSource(myConsumer);
+        text.print().setParallelism(1);
+
+        //执行计划
+        env.execute("Streaming From Kafka" );
+    }
+}
+
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>cn.smileyan.demo</groupId>
+    <artifactId>flink-kafka-demo</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <packaging>jar</packaging>
+    <properties>
+        <influxdb.java.version>2.15</influxdb.java.version>
+        <okhttp.version>3.13.1</okhttp.version>
+        <flink.version>1.12.1</flink.version>
+        <scala.binary.version>2.11</scala.binary.version>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+        <maven-shade-plugin.version>3.2.4</maven-shade-plugin.version>
+    </properties>
+    <profiles>
+        <profile>
+            <id>local</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <flink.scope>compile</flink.scope>
+            </properties>
+        </profile>
+        <profile>
+            <id>prod</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <properties>
+                <flink.scope>provided</flink.scope>
+            </properties>
+        </profile>
+    </profiles>
+    <dependencies>
+        <!-- https://mvnrepository.com/artifact/org.apache.logging.log4j/log4j-core -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>2.14.1</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-log4j12 -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+            <version>1.7.32</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-java</artifactId>
+            <version>${flink.version}</version>
+            <scope>${flink.scope}</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>log4j</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-streaming-java_${scala.binary.version}</artifactId>
+            <version>${flink.version}</version>
+            <scope>${flink.scope}</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>log4j</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-clients_${scala.binary.version}</artifactId>
+            <version>${flink.version}</version>
+            <scope>${flink.scope}</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>log4j</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-connector-kafka_${scala.binary.version}</artifactId>
+            <version>${flink.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>log4j</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-connector-elasticsearch6_${scala.binary.version}</artifactId>
+            <version>${flink.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>log4j</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <version>1.2.69</version>
+        </dependency>
+    </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>${maven-shade-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <artifactSet>
+                                <excludes>
+                                    <exclude>com.google.code.findbugs:jsr305</exclude>
+                                    <exclude>org.slf4j:*</exclude>
+                                    <exclude>log4j:*</exclude>
+                                </excludes>
+                            </artifactSet>
+                            <filters>
+                                <filter>
+                                    <!-- Do not copy the signatures in the META-INF folder.
+                                    Otherwise, this might cause SecurityExceptions when using the JAR. -->
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.1</version>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+
+
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.streaming.api.datastream.DataStreamSource;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer011;
+
+import java.util.Properties;
+
+/**
+ * kafka作为数据源
+ */
+public class SoureTest3 {
+
+    public static void main(String[] args) throws Exception {
+        //创建执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        //读取kafka的数据
+        Properties properties = new Properties();
+        properties.setProperty("bootstrap.servers","kafka公网IP:9092");
+        properties.setProperty("group.id", "consumer-group");
+        properties.setProperty("key.deserializer",
+                "org.apache.kafka.common.serialization.StringDeserializer");
+        properties.setProperty("value.deserializer",
+                "org.apache.kafka.common.serialization.StringDeserializer");
+        properties.setProperty("auto.offset.reset", "latest");
+
+        DataStreamSource<String> dataStreamSource = env.addSource(
+                new FlinkKafkaConsumer011<>(
+                        "zcy",
+                        new SimpleStringSchema(),
+                        properties)
+        );
+        dataStreamSource.print();
+        env.execute();
+    }
+
+}
+
+为什么选择了Flink而不是spark？
+
+​ 首先阿里是用了基于Flink深度定制和优化改装的Blink，他们这么选肯定是有道理的。当然这里只是在技术的总体架构上是相近的，主要的组件都是用到大数据实时计算组件Flink 。
+
+​ 其次 Flink 可以支持本地的快速迭代，以及一些环形的迭代任务。并且 Flink 可以定制化内存管理。在这点，如果要对比 Flink 和 Spark 的话，Flink 并没有将内存完全交给应用层。这也是为什么 Spark 相对于 Flink，更容易出现 OOM 的原因（out of memory）。就框架本身与应用场景来说，Flink 更相似与 Storm 。
+
+package com.bolingcavalry.addsink;
+
+import org.apache.flink.streaming.connectors.kafka.KafkaSerializationSchema;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import java.nio.charset.StandardCharsets;
+
+public class ProducerStringSerializationSchema implements KafkaSerializationSchema<String> {
+
+    private String topic;
+
+    public ProducerStringSerializationSchema(String topic) {
+        super();
+        this.topic = topic;
+    }
+
+    @Override
+    public ProducerRecord<byte[], byte[]> serialize(String element, Long timestamp) {
+        return new ProducerRecord<byte[], byte[]>(topic, element.getBytes(StandardCharsets.UTF_8));
+    }
+}
+
+
+package com.bolingcavalry.addsink;
+
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+
+public class KafkaStrSink {
+    public static void main(String[] args) throws Exception {
+        final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        //并行度为1
+        env.setParallelism(1);
+
+        Properties properties = new Properties();
+        properties.setProperty("bootstrap.servers", "192.168.50.43:9092");
+
+        String topic = "test006";
+        FlinkKafkaProducer<String> producer = new FlinkKafkaProducer<>(topic,
+                new ProducerStringSerializationSchema(topic),
+                properties,
+                FlinkKafkaProducer.Semantic.EXACTLY_ONCE);
+
+        //创建一个List，里面有两个Tuple2元素
+        List<String> list = new ArrayList<>();
+        list.add("aaa");
+        list.add("bbb");
+        list.add("ccc");
+        list.add("ddd");
+        list.add("eee");
+        list.add("fff");
+        list.add("aaa");
+
+        //统计每个单词的数量
+        env.fromCollection(list)
+           .addSink(producer)
+           .setParallelism(4);
+
+        env.execute("sink demo : kafka str");
+    }
+}
+::::::::::::::::::::::::
+package com.bolingcavalry;
+
+import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.java.tuple.Tuple;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.streaming.api.TimeCharacteristic;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
+import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
+import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer011;
+
+import javax.annotation.Nullable;
+import java.util.Properties;
+
+/**
+ * Skeleton for a Flink Streaming Job.
+ *
+ * <p>For a tutorial how to write a Flink streaming application, check the
+ * tutorials and examples on the <a href="http://flink.apache.org/docs/stable/">Flink Website</a>.
+ *
+ * <p>To package your application into a JAR file for execution, run
+ * 'mvn clean package' on the command line.
+ *
+ * <p>If you change the name of the main class (with the public static void main(String[] args))
+ * method, change the respective entry in the POM.xml file (simply search for 'mainClass').
+ */
+public class StreamingJob {
+
+	public static void main(String[] args) throws Exception {
+
+		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.enableCheckpointing(5000); // 要设置启动检查点
+		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+
+		Properties props = new Properties();
+		props.setProperty("bootstrap.servers", "kafka1:9092");
+		props.setProperty("group.id", "flink-group");
+
+		//数据源配置，是一个kafka消息的消费者
+		FlinkKafkaConsumer011<String> consumer =
+				new FlinkKafkaConsumer011<>("topic001", new SimpleStringSchema(), props);
+
+		//增加时间水位设置类
+		consumer.assignTimestampsAndWatermarks(new AssignerWithPunctuatedWatermarks<String> (){
+			@Override
+			public long extractTimestamp(String element, long previousElementTimestamp) {
+				return JSONHelper.getTimeLongFromRawMessage(element);
+			}
+
+			@Nullable
+			@Override
+			public Watermark checkAndGetNextWatermark(String lastElement, long extractedTimestamp) {
+				if (lastElement != null) {
+					return new Watermark(JSONHelper.getTimeLongFromRawMessage(lastElement));
+				}
+				return null;
+			}
+		});
+
+		env.addSource(consumer)
+				//将原始消息转成Tuple2对象，保留用户名称和访问次数(每个消息访问次数为1)
+				.flatMap((FlatMapFunction<String, Tuple2<String, Long>>) (s, collector) -> {
+					SingleMessage singleMessage = JSONHelper.parse(s);
+
+					if (null != singleMessage) {
+						collector.collect(new Tuple2<>(singleMessage.getName(), 1L));
+					}
+				})
+				//以用户名为key
+				.keyBy(0)
+				//时间窗口为2秒
+				.timeWindow(Time.seconds(2))
+				//将每个用户访问次数累加起来
+				.apply((WindowFunction<Tuple2<String, Long>, Tuple2<String, Long>, Tuple, TimeWindow>) (tuple, window, input, out) -> {
+					long sum = 0L;
+					for (Tuple2<String, Long> record: input) {
+						sum += record.f1;
+					}
+
+					Tuple2<String, Long> result = input.iterator().next();
+					result.f1 = sum;
+					out.collect(result);
+				})
+				//输出方式是STDOUT
+				.print();
+
+		env.execute("Flink-Kafka demo");
+	}
+}
+
+https://github.com/apache/flink
+https://github.com/apache/flink/tree/master/flink-connectors
+https://github.com/apache/flink/tree/master/flink-connectors/flink-connector-kafka
+
+https://dev.classmethod.jp/articles/apache-flink-playgrounds-intro/
